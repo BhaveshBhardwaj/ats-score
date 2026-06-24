@@ -53,6 +53,9 @@ class ForensicAgent(BaseAgent):
         # 5. Profile consistency
         evidence.extend(self._check_profile_consistency(candidate))
         
+        # 6. Assessment-verified must-have skills (strongest objective signal)
+        evidence.extend(self._check_assessment_verified_musthaves(candidate))
+        
         # Forensic score is based on integrity — how trustworthy is this profile?
         positive = sum(e.effective_weight for e in evidence if e.polarity == EvidencePolarity.POSITIVE)
         negative = abs(sum(e.effective_weight for e in evidence if e.polarity == EvidencePolarity.NEGATIVE))
@@ -387,6 +390,66 @@ class ForensicAgent(BaseAgent):
                 strength=0.2,
                 evidence_type=EvidenceType.CORROBORATED,
                 details="all 3 verifications (email, phone, LinkedIn)",
+            ))
+        
+        return evidence
+    
+    def _check_assessment_verified_musthaves(self, candidate: dict) -> list:
+        """
+        Check if must-have skills have been verified by Redrob assessments.
+        A candidate who scored 85/100 on Python assessment is objectively
+        more credible than one who just lists "Python Expert".
+        This is the most trustworthy signal in the entire dataset.
+        """
+        evidence = []
+        signals = candidate.get("redrob_signals", {})
+        assessments = signals.get("skill_assessment_scores", {})
+        
+        if not assessments:
+            return evidence
+        
+        must_have_keywords = {
+            "python", "embedding", "embeddings", "vector", "search",
+            "retrieval", "ranking", "nlp", "machine learning",
+            "deep learning", "pytorch", "tensorflow",
+        }
+        
+        verified_musthave_count = 0
+        
+        for assessed_skill, score in assessments.items():
+            skill_lower = assessed_skill.lower()
+            is_musthave = any(kw in skill_lower for kw in must_have_keywords)
+            
+            if is_musthave and score >= 70:
+                verified_musthave_count += 1
+                if score >= 85:
+                    evidence.append(self._make_evidence(
+                        claim=f"Assessment-verified must-have: {assessed_skill}",
+                        source="assessment",
+                        polarity=EvidencePolarity.POSITIVE,
+                        strength=0.8,
+                        evidence_type=EvidenceType.CORROBORATED,
+                        details=f"assessment-verified '{assessed_skill}' scored {score}/100",
+                    ))
+                else:
+                    evidence.append(self._make_evidence(
+                        claim=f"Assessment-verified must-have: {assessed_skill}",
+                        source="assessment",
+                        polarity=EvidencePolarity.POSITIVE,
+                        strength=0.5,
+                        evidence_type=EvidenceType.CORROBORATED,
+                        details=f"assessment-verified '{assessed_skill}' scored {score}/100",
+                    ))
+        
+        # Bonus for having multiple must-haves verified
+        if verified_musthave_count >= 3:
+            evidence.append(self._make_evidence(
+                claim="Multiple must-have skills assessment-verified",
+                source="assessment",
+                polarity=EvidencePolarity.POSITIVE,
+                strength=0.7,
+                evidence_type=EvidenceType.CORROBORATED,
+                details=f"{verified_musthave_count} must-have skills verified by assessment",
             ))
         
         return evidence

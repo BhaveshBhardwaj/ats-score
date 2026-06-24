@@ -51,7 +51,21 @@ for kw in ("production", "deployed", "shipped", "scaled", "real users", "a/b tes
 try:
     from fastembed import TextEmbedding
     _embed_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    _JD_TEXT = "Senior AI Engineer specializing in NLP, Large Language Models, Vector Databases, Python, and Machine Learning ranking."
+    _JD_TEXT = (
+        "Senior AI Engineer at a Series A AI-native talent intelligence platform. "
+        "Must have production experience with embeddings-based retrieval systems like "
+        "sentence-transformers, BGE, E5 deployed to real users. Must have operational "
+        "experience with vector databases: Pinecone, Weaviate, Qdrant, Milvus, "
+        "OpenSearch, Elasticsearch, FAISS. Strong Python required. Must have designed "
+        "evaluation frameworks for ranking systems using NDCG, MRR, MAP. "
+        "Nice to have: LLM fine-tuning with LoRA, QLoRA, PEFT. Learning-to-rank models. "
+        "The ideal candidate has 6-8 years experience, 4-5 years in applied ML/AI roles "
+        "at product companies, not services. Has shipped end-to-end ranking, search, or "
+        "recommendation system to real users at meaningful scale. Located in India. "
+        "Disqualifiers: pure research without production deployment, only recent LangChain "
+        "experience, career entirely at consulting firms like TCS Infosys Wipro, "
+        "primarily computer vision or robotics without NLP/IR exposure."
+    )
     _jd_embedding = list(_embed_model.embed([_JD_TEXT]))[0]
     print("[INIT] FastEmbed Semantic Engine ready.")
 except Exception as e:
@@ -144,6 +158,27 @@ def fast_triage_score(candidate: dict) -> tuple[float, bool]:
             if any(ind in j.get("industry", "").lower() for ind in TECH_PRODUCT_INDUSTRIES)
         )
         score += min(0.10, product_count * 0.04)
+    
+    # ── 6. Product AI Depth — the JD's ideal archetype ─────────────
+    # "6-8 years, 4-5 in applied ML/AI at product companies, shipped
+    # ranking/search/recommendation to real users at meaningful scale"
+    if career:
+        product_ai_roles = 0
+        for job in career:
+            job_title = job.get("title", "").lower()
+            job_industry = job.get("industry", "").lower()
+            job_desc = job.get("description", "").lower()
+            
+            has_ai_title = "HIGH" in _title_processor.extract_keywords(job_title)
+            has_product_co = any(ind in job_industry for ind in TECH_PRODUCT_INDUSTRIES)
+            has_prod_work = len(_prod_processor.extract_keywords(job_desc)) > 0
+            
+            if has_ai_title and has_product_co:
+                product_ai_roles += 1
+                if has_prod_work:
+                    product_ai_roles += 1  # Double credit for shipping
+        
+        score += min(0.15, product_ai_roles * 0.05)
         
     return max(0.0, min(1.0, score)), (score > 0.15)
 

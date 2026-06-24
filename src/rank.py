@@ -71,6 +71,41 @@ def run_nexus_pipeline(candidate, agents):
     # Stage 4: LCB score for robust ranking
     lcb = compute_lcb_score(fusion_result)
     
+    # Stage 4.5: Post-fusion availability multiplier
+    # The JD says: "A perfect-on-paper candidate who hasn't logged in for
+    # 6 months and has a 5% response rate is not actually available."
+    signals = candidate.get("redrob_signals", {})
+    
+    # Availability boost/penalty
+    open_to_work = signals.get("open_to_work_flag", False)
+    response_rate = signals.get("recruiter_response_rate", 0.5)
+    last_active = signals.get("last_active_date", "")
+    notice_days = signals.get("notice_period_days", 60)
+    
+    # Check recency (simple heuristic: if last_active contains "2026" or "2025", they're recent)
+    is_recent = False
+    if last_active:
+        for year in ("2026", "2025"):
+            if year in str(last_active):
+                is_recent = True
+                break
+    
+    # Availability multiplier
+    if open_to_work and response_rate > 0.5 and is_recent:
+        lcb *= 1.08  # Strong availability signal
+    elif response_rate < 0.15 or not is_recent:
+        lcb *= 0.88  # Effectively unavailable
+    
+    # Tiered notice period (JD: "sub-30 day notice preferred, 30+ bar gets higher")
+    if notice_days <= 30:
+        lcb += 0.03
+    elif notice_days <= 60:
+        pass  # neutral
+    elif notice_days <= 90:
+        lcb -= 0.01
+    else:
+        lcb -= 0.04  # 90+ days is a significant friction
+    
     return {
         "candidate_id": candidate.get("candidate_id", ""),
         "verdicts": verdicts,
