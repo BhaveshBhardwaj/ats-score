@@ -172,6 +172,49 @@ def detect_honeypot(candidate: dict) -> tuple[bool, str]:
         flags.append(f"{mismatch_count} jobs with title-description mismatch")
         score += 2
     
+    # ── Check 8: Compound impossibility detection ───────────────
+    # Multiple individually-plausible signals that compound
+    compound_score = 0
+    
+    # Skill diversity vs career focus mismatch
+    # If someone has skills in 5+ unrelated domains, suspicious
+    skill_domains = set()
+    for skill in skills:
+        name = skill.get("name", "").lower()
+        if any(kw in name for kw in ["python", "java", "sql", "javascript"]):
+            skill_domains.add("programming")
+        elif any(kw in name for kw in ["machine learning", "deep learning", "neural", "ai"]):
+            skill_domains.add("ml")
+        elif any(kw in name for kw in ["marketing", "seo", "brand"]):
+            skill_domains.add("marketing")
+        elif any(kw in name for kw in ["accounting", "tax", "audit", "finance"]):
+            skill_domains.add("accounting")
+        elif any(kw in name for kw in ["design", "photoshop", "figma", "sketch"]):
+            skill_domains.add("design")
+        elif any(kw in name for kw in ["hr", "recruitment", "payroll"]):
+            skill_domains.add("hr")
+        elif any(kw in name for kw in ["sales", "crm", "lead"]):
+            skill_domains.add("sales")
+    
+    non_tech_domains = skill_domains - {"programming", "ml"}
+    if len(non_tech_domains) >= 3 and "ml" in skill_domains:
+        compound_score += 2
+        flags.append(f"Skills span {len(skill_domains)} unrelated domains")
+    
+    # All skills have identical endorsement counts (manufactured)
+    endorsement_counts = [s.get("endorsements", 0) for s in skills if s.get("endorsements", 0) > 0]
+    if len(endorsement_counts) >= 5 and len(set(endorsement_counts)) == 1:
+        compound_score += 1
+        flags.append("All skills have identical endorsement counts")
+    
+    # All skills have identical duration (manufactured)
+    duration_counts = [s.get("duration_months", 0) for s in skills if s.get("duration_months", 0) > 0]
+    if len(duration_counts) >= 5 and len(set(duration_counts)) == 1:
+        compound_score += 1
+        flags.append("All skills have identical durations")
+    
+    score += compound_score
+    
     # ── Final decision ────────────────────────────────────────────
     is_honeypot = score >= 5
     reason = "; ".join(flags) if flags else "No honeypot signals"

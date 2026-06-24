@@ -1,8 +1,9 @@
 """
-Redrob AI Candidate Ranker -- Streamlit Demo App
+Redrob AI Candidate Ranker — NEXUS Demo App
 
-Interactive demo for the Intelligent Candidate Discovery & Ranking system.
-Upload a small set of candidates (JSON/JSONL) and see ranked results.
+Interactive Streamlit app showcasing the multi-agent adversarial
+evaluation system. Upload candidates and see how 5 agents debate
+their fitness for the Senior AI Engineer role.
 
 Run with:
     streamlit run app.py
@@ -21,14 +22,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from pipeline.loader import load_candidates
 from pipeline.prefilter import prefilter
-from pipeline.scorer import score_candidate
-from pipeline.ranker import generate_reasoning
+
+from agents.advocate import AdvocateAgent
+from agents.skeptic import SkepticAgent
+from agents.forensic import ForensicAgent
+from agents.trajectory import TrajectoryAgent
+from agents.availability import AvailabilityAgent
+from fusion.debate import run_debate, compute_disagreement_profile, aggregate_evidence
+from fusion.bayesian import bayesian_fusion, compute_lcb_score
+from fusion.ranker import generate_nexus_reasoning
 
 
 # ---- Page Config ----
 st.set_page_config(
-    page_title="Redrob AI Candidate Ranker",
-    page_icon="",
+    page_title="NEXUS — Multi-Agent Candidate Ranker",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -50,30 +58,61 @@ st.markdown("""
         margin-top: -10px;
         margin-bottom: 30px;
     }
-    .metric-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    .agent-card {
         border-radius: 12px;
-        padding: 20px;
-        text-align: center;
+        padding: 15px;
+        margin: 5px 0;
     }
+    .agent-advocate { background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); color: #1a3a1a; }
+    .agent-skeptic { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #3a1a1a; }
+    .agent-forensic { background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); color: #1a1a3a; }
+    .agent-trajectory { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #3a2a1a; }
+    .agent-availability { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); color: #2a1a3a; }
     .score-high { color: #10b981; font-weight: bold; }
     .score-mid { color: #f59e0b; font-weight: bold; }
     .score-low { color: #ef4444; font-weight: bold; }
+    .evidence-positive { color: #10b981; }
+    .evidence-negative { color: #ef4444; }
+    .evidence-challenged { text-decoration: line-through; opacity: 0.6; }
     .stDataFrame { border-radius: 12px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 
-def score_color(score):
-    if score >= 0.7:
-        return "score-high"
-    elif score >= 0.4:
-        return "score-mid"
-    return "score-low"
+def _init_agents():
+    """Initialize all NEXUS agents (cached)."""
+    return [
+        AdvocateAgent(),
+        SkepticAgent(),
+        ForensicAgent(),
+        TrajectoryAgent(),
+        AvailabilityAgent(),
+    ]
 
 
-def run_pipeline(candidates_data):
-    """Run the full ranking pipeline on a list of candidate dicts."""
+def run_nexus_single(candidate, agents):
+    """Run NEXUS on a single candidate."""
+    verdicts = [agent.evaluate(candidate) for agent in agents]
+    disagreement = compute_disagreement_profile(verdicts)
+    
+    if disagreement["needs_debate"]:
+        verdicts = run_debate(verdicts, agents, candidate)
+    
+    all_evidence = aggregate_evidence(verdicts)
+    fusion = bayesian_fusion(verdicts, all_evidence)
+    lcb = compute_lcb_score(fusion)
+    
+    return {
+        "candidate_id": candidate.get("candidate_id", ""),
+        "verdicts": verdicts,
+        "fusion_result": fusion,
+        "lcb_score": lcb,
+        "disagreement": disagreement,
+    }
+
+
+def run_nexus_pipeline(candidates_data, agents):
+    """Run NEXUS on all candidates."""
     results = {
         "total": 0,
         "filtered": 0,
@@ -86,9 +125,8 @@ def run_pipeline(candidates_data):
     
     for i, candidate in enumerate(candidates_data):
         results["total"] += 1
-        progress.progress((i + 1) / total, text=f"Processing {i+1}/{total}...")
+        progress.progress((i + 1) / total, text=f"NEXUS evaluating {i+1}/{total}...")
         
-        # Pre-filter
         passes, reason = prefilter(candidate)
         if not passes:
             results["filtered"] += 1
@@ -96,74 +134,89 @@ def run_pipeline(candidates_data):
                 results["honeypots"] += 1
             continue
         
-        # Score
-        scored = score_candidate(candidate)
-        scored["_candidate"] = candidate  # Keep reference for display
-        results["scored"].append(scored)
+        nexus_result = run_nexus_single(candidate, agents)
+        nexus_result["_candidate"] = candidate
+        results["scored"].append(nexus_result)
     
-    # Sort by composite score descending
-    results["scored"].sort(key=lambda x: (-x["composite_score"], x["candidate_id"]))
-    
+    results["scored"].sort(key=lambda x: (-x["lcb_score"], x["candidate_id"]))
     progress.empty()
     return results
 
 
+def display_agent_verdict(verdict, agent_name, color_class):
+    """Display a single agent's verdict."""
+    score_pct = f"{verdict.score:.0%}"
+    conf_pct = f"{verdict.confidence:.0%}"
+    
+    st.markdown(f"""
+    <div class="agent-card {color_class}">
+        <strong>{agent_name}</strong>: {score_pct} (conf: {conf_pct})<br>
+        <small>{verdict.reasoning[:120]}</small>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def display_results(results, top_n=100):
-    """Display ranked results."""
+    """Display NEXUS ranked results."""
     scored = results["scored"][:top_n]
     
     if not scored:
-        st.warning("No candidates passed the pre-filter. Try a different dataset.")
+        st.warning("No candidates passed the pre-filter.")
         return
     
     # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Total Processed", results["total"])
     with col2:
-        st.metric("Passed Pre-Filter", len(results["scored"]))
+        st.metric("NEXUS Evaluated", len(results["scored"]))
     with col3:
         st.metric("Filtered Out", results["filtered"])
     with col4:
-        st.metric("Honeypots Caught", results["honeypots"])
+        st.metric("Honeypots", results["honeypots"])
+    with col5:
+        debates = sum(1 for s in results["scored"] if s["disagreement"].get("needs_debate", False))
+        st.metric("Debates", debates)
     
     st.markdown("---")
     
     # Results table
     rows = []
     for rank, s in enumerate(scored, 1):
+        fusion = s["fusion_result"]
+        reasoning = generate_nexus_reasoning(fusion, s.get("verdicts", []))
         candidate = s.get("_candidate", {})
         profile = candidate.get("profile", {})
-        reasoning = generate_reasoning(s)
+        
+        ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
         
         rows.append({
             "Rank": rank,
             "ID": s["candidate_id"],
-            "Score": round(s["composite_score"], 4),
+            "LCB Score": round(s["lcb_score"], 4),
+            "Posterior": round(fusion["posterior"], 4),
+            "Uncertainty": round(fusion["uncertainty"], 4),
+            "Agreement": round(fusion["agent_agreement"], 4),
             "Title": profile.get("current_title", "?"),
-            "Experience": f"{profile.get('years_of_experience', 0)} yrs",
             "Company": profile.get("current_company", "?"),
-            "Location": f"{profile.get('location', '?')}, {profile.get('country', '?')}",
-            "Career": round(s["career"]["total_score"], 3),
-            "Skills": round(s["skills"]["total_score"], 3),
-            "Behavioral": round(s["behavioral"]["total_score"], 3),
+            "Exp": f"{profile.get('years_of_experience', 0)} yrs",
             "Reasoning": reasoning,
         })
     
     st.dataframe(
         rows,
         use_container_width=True,
-        height=600,
+        height=500,
         column_config={
             "Rank": st.column_config.NumberColumn("Rank", width="small"),
-            "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=1, format="%.4f"),
-            "Career": st.column_config.ProgressColumn("Career", min_value=0, max_value=1, format="%.3f"),
-            "Skills": st.column_config.ProgressColumn("Skills", min_value=0, max_value=1, format="%.3f"),
-            "Behavioral": st.column_config.ProgressColumn("Behav", min_value=0, max_value=1, format="%.3f"),
+            "LCB Score": st.column_config.ProgressColumn("LCB", min_value=0, max_value=1, format="%.4f"),
+            "Posterior": st.column_config.ProgressColumn("Posterior", min_value=0, max_value=1, format="%.4f"),
+            "Uncertainty": st.column_config.ProgressColumn("Uncert", min_value=0, max_value=1, format="%.4f"),
+            "Agreement": st.column_config.ProgressColumn("Agree", min_value=0, max_value=1, format="%.4f"),
         },
     )
     
-    # Generate downloadable CSV
+    # CSV download
     csv_buffer = io.StringIO()
     writer = csv.DictWriter(csv_buffer, fieldnames=["candidate_id", "rank", "score", "reasoning"])
     writer.writeheader()
@@ -171,97 +224,112 @@ def display_results(results, top_n=100):
         writer.writerow({
             "candidate_id": row["ID"],
             "rank": row["Rank"],
-            "score": f"{row['Score']:.4f}",
+            "score": f"{row['LCB Score']:.4f}",
             "reasoning": row["Reasoning"],
         })
     
     st.download_button(
-        label="Download submission.csv",
+        label="📥 Download submission.csv",
         data=csv_buffer.getvalue(),
         file_name="submission.csv",
         mime="text/csv",
     )
     
-    # Detailed view for top candidates
+    # ── Detailed Agent Analysis for Top Candidates ────────────────
     st.markdown("---")
-    st.subheader("Detailed Candidate Profiles (Top 10)")
+    st.subheader("🔍 Multi-Agent Analysis (Top 10)")
+    
+    agent_names = {
+        "advocate": ("🟢 Advocate", "agent-advocate"),
+        "skeptic": ("🔴 Skeptic", "agent-skeptic"),
+        "forensic": ("🔵 Forensic", "agent-forensic"),
+        "trajectory": ("🟠 Trajectory", "agent-trajectory"),
+        "availability": ("🟣 Availability", "agent-availability"),
+    }
     
     for s in scored[:10]:
         candidate = s.get("_candidate", {})
         profile = candidate.get("profile", {})
-        signals = candidate.get("redrob_signals", {})
+        fusion = s["fusion_result"]
+        
+        ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
         
         with st.expander(
             f"#{scored.index(s)+1} | {s['candidate_id']} | "
             f"{profile.get('current_title', '?')} @ {profile.get('current_company', '?')} | "
-            f"Score: {s['composite_score']:.4f}"
+            f"LCB: {s['lcb_score']:.4f}"
         ):
-            col1, col2 = st.columns(2)
+            # Agent verdicts
+            st.markdown("**Agent Verdicts:**")
+            cols = st.columns(5)
+            for i, verdict in enumerate(s.get("verdicts", [])):
+                name, css_class = agent_names.get(verdict.agent_id, ("Agent", ""))
+                with cols[i % 5]:
+                    display_agent_verdict(verdict, name, css_class)
             
+            # Fusion details
+            st.markdown("**Fusion Results:**")
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.markdown(f"**Headline:** {profile.get('headline', 'N/A')}")
-                st.markdown(f"**Summary:** {profile.get('summary', 'N/A')[:300]}...")
-                st.markdown(f"**Location:** {profile.get('location', '?')}, {profile.get('country', '?')}")
-                st.markdown(f"**Experience:** {profile.get('years_of_experience', 0)} years")
-                st.markdown(f"**Industry:** {profile.get('current_industry', '?')}")
+                st.metric("Posterior", f"{fusion['posterior']:.4f}")
+            with col2:
+                st.metric("Uncertainty", f"{fusion['uncertainty']:.4f}")
+            with col3:
+                st.metric("CI", f"[{ci_low:.2f}, {ci_high:.2f}]")
+            with col4:
+                st.metric("Agreement", f"{fusion['agent_agreement']:.2f}")
+            
+            # Evidence summary
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**✅ Top Positive Evidence:**")
+                for ev in fusion.get("top_positive_evidence", []):
+                    survived = " ✓" if ev.challenge_survived else ""
+                    st.markdown(f"- {ev.details}{survived}")
             
             with col2:
-                st.markdown("**Score Breakdown:**")
-                st.markdown(f"- Career Fit: {s['career']['total_score']:.3f} -- {s['career']['details']}")
-                st.markdown(f"- Skills: {s['skills']['total_score']:.3f} -- {s['skills']['details']}")
-                st.markdown(f"- Experience: {s['experience']['total_score']:.3f} -- {s['experience']['details']}")
-                st.markdown(f"- Behavioral: {s['behavioral']['total_score']:.3f} -- {s['behavioral']['details']}")
-                st.markdown(f"- Location: {s['location']['total_score']:.3f} -- {s['location']['details']}")
+                st.markdown("**❌ Top Negative Evidence:**")
+                for ev in fusion.get("top_negative_evidence", []):
+                    survived = " ✓" if ev.challenge_survived else ""
+                    st.markdown(f"- {ev.details}{survived}")
             
-            # Career history
-            st.markdown("**Career History:**")
-            for job in candidate.get("career_history", []):
-                current = " (Current)" if job.get("is_current") else ""
-                st.markdown(
-                    f"- **{job.get('title', '?')}** at {job.get('company', '?')}{current} "
-                    f"({job.get('duration_months', 0)}mo, {job.get('industry', '?')})"
-                )
-            
-            # Skills
-            skills = candidate.get("skills", [])
-            if skills:
-                skill_text = ", ".join(
-                    f"{s.get('name', '?')} ({s.get('proficiency', '?')})"
-                    for s in skills
-                )
-                st.markdown(f"**Skills:** {skill_text}")
+            # Disagreement profile
+            disagree = s.get("disagreement", {})
+            if disagree.get("needs_debate"):
+                st.info(f"⚡ Debate triggered (spread: {disagree.get('spread', 0):.2f})")
 
 
 # ---- Main App ----
 def main():
-    st.markdown('<p class="main-header">Redrob AI Candidate Ranker</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Intelligent Candidate Discovery & Ranking for Senior AI Engineer</p>', unsafe_allow_html=True)
+    st.markdown('<p class="main-header">⚡ NEXUS Candidate Ranker</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Neural Evidence eXamination & Unified Scoring — Multi-Agent Adversarial Reasoning</p>', unsafe_allow_html=True)
     
-    # Sidebar
+    agents = _init_agents()
+    
     with st.sidebar:
-        st.header("Configuration")
+        st.header("NEXUS Architecture")
         st.markdown("""
-        This system ranks candidates for a **Senior AI Engineer -- Founding Team** 
-        position at Redrob AI using a multi-stage pipeline:
+        **5 Adversarial Agents** evaluate each candidate independently, 
+        then **debate** when they disagree.
         
-        1. **Pre-Filter**: Eliminate obviously unfit candidates & honeypots
-        2. **Multi-Dimensional Scoring**: Career, Skills, Experience, Behavioral, Location
-        3. **Rank & Reason**: Composite scoring with natural language reasoning
+        🟢 **Advocate** — finds reasons TO hire  
+        🔴 **Skeptic** — finds reasons NOT to hire  
+        🔵 **Forensic** — cross-validates all claims  
+        🟠 **Trajectory** — Monte Carlo career simulation  
+        🟣 **Availability** — Bayesian hireability estimation  
+        
+        ---
+        
+        **Novel Algorithms:**
+        - Cross-Evidence Corroboration Matrix (CECM)
+        - Adversarial Evidence Challenge Protocol
+        - Lower Confidence Bound Ranking
+        - Bayesian Belief Fusion
         """)
         
-        top_n = st.slider("Top N candidates to show", 10, 100, 100)
-        
-        st.markdown("---")
-        st.markdown("**Scoring Weights:**")
-        st.markdown("- Career Fit: 35%")
-        st.markdown("- Skills Match: 25%")
-        st.markdown("- Experience: 15%")
-        st.markdown("- Behavioral: 15%")
-        st.markdown("- Location: 10%")
+        top_n = st.slider("Top N candidates", 10, 100, 100)
     
-    # File upload
     st.markdown("### Upload Candidates")
-    st.markdown("Upload a JSON or JSONL file with candidate profiles. For a quick test, use the `sample_candidates.json` from the hackathon bundle.")
     
     uploaded_file = st.file_uploader(
         "Choose a candidates file",
@@ -270,7 +338,6 @@ def main():
     )
     
     if uploaded_file:
-        # Parse the file
         try:
             content = uploaded_file.read().decode("utf-8")
             
@@ -287,23 +354,21 @@ def main():
             
             st.success(f"Loaded {len(candidates_data)} candidates from {uploaded_file.name}")
             
-            # Run pipeline
-            if st.button("Run Ranking Pipeline", type="primary"):
+            if st.button("⚡ Run NEXUS Pipeline", type="primary"):
                 start = time.time()
                 
-                with st.spinner("Running multi-stage ranking pipeline..."):
-                    results = run_pipeline(candidates_data)
+                with st.spinner("Running multi-agent adversarial evaluation..."):
+                    results = run_nexus_pipeline(candidates_data, agents)
                 
                 elapsed = time.time() - start
-                st.success(f"Pipeline completed in {elapsed:.1f}s")
+                st.success(f"NEXUS pipeline completed in {elapsed:.1f}s")
                 
                 display_results(results, top_n=top_n)
                 
         except Exception as e:
-            st.error(f"Error parsing file: {e}")
+            st.error(f"Error: {e}")
     else:
-        # Show sample data option
-        st.info("No file uploaded. Upload a candidates JSON/JSONL file to get started.")
+        st.info("Upload a candidates JSON/JSONL file to run the NEXUS pipeline.")
 
 
 if __name__ == "__main__":

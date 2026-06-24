@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """
-Redrob AI Candidate Ranker -- Main Entry Point
+Redrob AI Candidate Ranker — NEXUS Architecture
 
-Intelligent candidate discovery and ranking system for the
-Redrob Hackathon: Senior AI Engineer -- Founding Team position.
+Neural Evidence eXamination & Unified Scoring
+
+Multi-agent adversarial reasoning system for intelligent
+candidate discovery and ranking.
+
+Architecture:
+  Stage 0: Enhanced Pre-Filter (100K → ~95K)
+  Stage 0.5: Fast Triage (95K → ~12K)
+  Stage 1: 5-Agent Parallel Evaluation
+  Stage 2: Adversarial Debate Protocol
+  Stage 3: Bayesian Belief Fusion + LCB Ranking
+  Stage 4: Reasoning Generation + CSV Output
 
 Usage:
     python rank.py --candidates ./candidates.jsonl --out ./submission.csv
@@ -13,7 +23,6 @@ Usage:
 import argparse
 import sys
 import time
-import os
 from pathlib import Path
 
 # Force UTF-8 output on Windows
@@ -26,13 +35,54 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from pipeline.loader import load_candidates
 from pipeline.prefilter import prefilter
-from pipeline.scorer import score_candidate
-from pipeline.ranker import rank_and_output
+from pipeline.triage import triage_candidates
+
+# NEXUS imports
+from agents.advocate import AdvocateAgent
+from agents.skeptic import SkepticAgent
+from agents.forensic import ForensicAgent
+from agents.trajectory import TrajectoryAgent
+from agents.availability import AvailabilityAgent
+from fusion.debate import run_debate, compute_disagreement_profile, aggregate_evidence
+from fusion.bayesian import bayesian_fusion, compute_lcb_score
+from fusion.ranker import rank_and_output_nexus
+
+
+def run_nexus_pipeline(candidate, agents):
+    """
+    Run the full NEXUS pipeline on a single candidate.
+    
+    Returns a dict with all NEXUS results or None if candidate
+    should be skipped.
+    """
+    # Stage 1: All agents evaluate independently
+    verdicts = [agent.evaluate(candidate) for agent in agents]
+    
+    # Stage 2: Adversarial debate (only if agents disagree)
+    disagreement = compute_disagreement_profile(verdicts)
+    
+    if disagreement["needs_debate"]:
+        verdicts = run_debate(verdicts, agents, candidate)
+    
+    # Stage 3: Bayesian belief fusion
+    all_evidence = aggregate_evidence(verdicts)
+    fusion_result = bayesian_fusion(verdicts, all_evidence)
+    
+    # Stage 4: LCB score for robust ranking
+    lcb = compute_lcb_score(fusion_result)
+    
+    return {
+        "candidate_id": candidate.get("candidate_id", ""),
+        "verdicts": verdicts,
+        "fusion_result": fusion_result,
+        "lcb_score": lcb,
+        "disagreement": disagreement,
+    }
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Redrob AI Candidate Ranker -- Intelligent Discovery & Ranking"
+        description="NEXUS — Neural Evidence eXamination & Unified Scoring"
     )
     parser.add_argument(
         "--candidates", "-c",
@@ -70,18 +120,30 @@ def main():
         sys.exit(1)
     
     print("")
-    print("=" * 62)
-    print("  Redrob AI Candidate Ranker")
-    print("  Senior AI Engineer -- Founding Team")
+    print("=" * 68)
+    print("  NEXUS — Neural Evidence eXamination & Unified Scoring")
+    print("  Multi-Agent Adversarial Reasoning for Candidate Ranking")
     print("")
-    print("  Multi-stage pipeline: PreFilter -> Score -> Rank")
-    print("=" * 62)
+    print("  Agents: Advocate | Skeptic | Forensic | Trajectory | Availability")
+    print("  Protocol: Pre-Filter → Triage → Evaluate → Debate → Fuse → Rank")
+    print("=" * 68)
     print("")
     
     start_time = time.time()
     
-    # --- Stage 1: Stream, pre-filter, and score ---
-    print("[Stage 1] Loading & pre-filtering candidates...")
+    # ── Initialize Agents ─────────────────────────────────────────
+    print("[INIT] Initializing NEXUS agents...")
+    agents = [
+        AdvocateAgent(),
+        SkepticAgent(),
+        ForensicAgent(),
+        TrajectoryAgent(),
+        AvailabilityAgent(),
+    ]
+    print(f"   [OK] {len(agents)} agents ready")
+    
+    # ── Stage 0: Pre-Filter ───────────────────────────────────────
+    print(f"\n[Stage 0] Loading & pre-filtering candidates...")
     print(f"   Source: {candidates_path}")
     if args.limit:
         print(f"   Limit: {args.limit} candidates")
@@ -89,20 +151,18 @@ def main():
     total_count = 0
     filtered_count = 0
     honeypot_count = 0
-    scored_candidates = []
+    passed_candidates = []
     
-    stage1_start = time.time()
+    stage0_start = time.time()
     
     for candidate in load_candidates(str(candidates_path), limit=args.limit):
         total_count += 1
         
-        # Progress reporting
         if total_count % 10000 == 0:
-            elapsed = time.time() - stage1_start
+            elapsed = time.time() - stage0_start
             rate = total_count / elapsed
-            print(f"   Processed {total_count:,} candidates ({rate:.0f}/sec) -- {len(scored_candidates)} passed pre-filter")
+            print(f"   Processed {total_count:,} candidates ({rate:.0f}/sec) — {len(passed_candidates)} passed")
         
-        # Pre-filter
         passes, reason = prefilter(candidate)
         
         if not passes:
@@ -114,44 +174,96 @@ def main():
                 print(f"   [FILTERED] {cid}: {reason}")
             continue
         
-        # Score the candidate
-        scored = score_candidate(candidate)
-        scored_candidates.append(scored)
+        passed_candidates.append(candidate)
+    
+    stage0_time = time.time() - stage0_start
+    
+    print(f"\n   [OK] Stage 0 complete in {stage0_time:.1f}s")
+    print(f"   Total processed: {total_count:,}")
+    print(f"   Filtered out: {filtered_count:,} ({filtered_count/max(total_count,1)*100:.1f}%)")
+    print(f"   Honeypots: {honeypot_count}")
+    print(f"   Pre-filter passed: {len(passed_candidates):,}")
+    
+    # ── Stage 0.5: Fast Triage ────────────────────────────────────
+    # Reduce candidate pool to manageable size for NEXUS
+    MAX_NEXUS_CANDIDATES = 15000
+    
+    if len(passed_candidates) > MAX_NEXUS_CANDIDATES:
+        print(f"\n[Stage 0.5] Fast triage: {len(passed_candidates):,} → top {MAX_NEXUS_CANDIDATES:,}...")
+        
+        triage_start = time.time()
+        
+        # Use the dedicated triage function (FlashText + FastEmbed Semantic boost)
+        triage_results = triage_candidates(passed_candidates, MAX_NEXUS_CANDIDATES)
+        
+        triage_time = time.time() - triage_start
+        
+        print(f"   [OK] Triage complete in {triage_time:.1f}s")
+        print(f"   Candidates for NEXUS: {len(triage_results):,}")
+    else:
+        triage_results = passed_candidates
+        print(f"\n[Stage 0.5] Triage skipped (pool size {len(passed_candidates):,} ≤ {MAX_NEXUS_CANDIDATES:,})")
+    
+    # ── Stage 1-3: NEXUS Evaluation ──────────────────────────────
+    print(f"\n[Stage 1-3] Running NEXUS multi-agent evaluation...")
+    print(f"   5 agents × {len(triage_results):,} candidates")
+    
+    stage1_start = time.time()
+    nexus_results = []
+    debate_count = 0
+    
+    for i, candidate in enumerate(triage_results):
+        if (i + 1) % 5000 == 0:
+            elapsed = time.time() - stage1_start
+            rate = (i + 1) / elapsed
+            print(f"   Evaluated {i+1:,}/{len(triage_results):,} ({rate:.0f}/sec) — {debate_count} debates triggered")
+        
+        result = run_nexus_pipeline(candidate, agents)
+        if result:
+            nexus_results.append(result)
+            if result["disagreement"].get("needs_debate", False):
+                debate_count += 1
     
     stage1_time = time.time() - stage1_start
     
-    print(f"\n   [OK] Stage 1 complete in {stage1_time:.1f}s")
-    print(f"   Total candidates processed: {total_count:,}")
-    print(f"   Filtered out: {filtered_count:,} ({filtered_count/max(total_count,1)*100:.1f}%)")
-    print(f"   Honeypots detected: {honeypot_count}")
-    print(f"   Candidates to rank: {len(scored_candidates):,}")
+    print(f"\n   [OK] Stages 1-3 complete in {stage1_time:.1f}s")
+    print(f"   Candidates evaluated: {len(nexus_results):,}")
+    print(f"   Debates triggered: {debate_count} ({debate_count/max(len(nexus_results),1)*100:.1f}%)")
     
-    # --- Stage 2: Sort and select top N ---
-    print(f"\n[Stage 2] Ranking top {args.top} candidates...")
+    # Score statistics
+    if nexus_results:
+        lcb_scores = [r["lcb_score"] for r in nexus_results]
+        print(f"   LCB scores: max={max(lcb_scores):.4f}, min={min(lcb_scores):.4f}, mean={sum(lcb_scores)/len(lcb_scores):.4f}")
+        
+        uncertainties = [r["fusion_result"]["uncertainty"] for r in nexus_results]
+        print(f"   Uncertainty: mean={sum(uncertainties)/len(uncertainties):.4f}")
     
-    stage2_start = time.time()
-    rows = rank_and_output(scored_candidates, args.out, top_n=args.top)
-    stage2_time = time.time() - stage2_start
+    # ── Stage 4: Final Ranking ────────────────────────────────────
+    print(f"\n[Stage 4] Generating final ranking (top {args.top})...")
     
-    print(f"   [OK] Stage 2 complete in {stage2_time:.1f}s")
+    stage4_start = time.time()
+    rows = rank_and_output_nexus(nexus_results, args.out, top_n=args.top)
+    stage4_time = time.time() - stage4_start
     
-    # --- Summary ---
+    print(f"   [OK] Stage 4 complete in {stage4_time:.1f}s")
+    
+    # ── Pipeline Summary ──────────────────────────────────────────
     total_time = time.time() - start_time
     
-    print(f"\n{'='*60}")
-    print(f"  PIPELINE SUMMARY")
-    print(f"{'='*60}")
-    print(f"  Total runtime:       {total_time:.1f}s")
-    print(f"  Candidates in:       {total_count:,}")
-    print(f"  Pre-filtered out:    {filtered_count:,}")
-    print(f"  Honeypots caught:    {honeypot_count}")
-    print(f"  Candidates scored:   {len(scored_candidates):,}")
-    print(f"  Output:              {args.out}")
-    print(f"  Top candidate score: {rows[0]['score'] if rows else 'N/A'}")
-    print(f"  Min candidate score: {rows[-1]['score'] if rows else 'N/A'}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*68}")
+    print(f"  NEXUS PIPELINE SUMMARY")
+    print(f"{'='*68}")
+    print(f"  Total runtime:        {total_time:.1f}s")
+    print(f"  Candidates in:        {total_count:,}")
+    print(f"  Pre-filtered out:     {filtered_count:,}")
+    print(f"  Honeypots caught:     {honeypot_count}")
+    print(f"  NEXUS evaluated:      {len(nexus_results):,}")
+    print(f"  Debates triggered:    {debate_count}")
+    print(f"  Output:               {args.out}")
+    print(f"  Top candidate score:  {rows[0]['score'] if rows else 'N/A'}")
+    print(f"  Min candidate score:  {rows[-1]['score'] if rows else 'N/A'}")
+    print(f"{'='*68}\n")
     
-    # Check runtime constraint
     if total_time > 300:
         print(f"  WARNING: Runtime ({total_time:.1f}s) exceeds 5-minute limit!")
     else:
