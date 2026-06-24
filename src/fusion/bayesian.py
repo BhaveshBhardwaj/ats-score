@@ -168,7 +168,7 @@ def bayesian_fusion(
     }
 
 
-def compute_lcb_score(fusion_result: Dict, k: float = 0.8) -> float:
+def compute_lcb_score(fusion_result: Dict, k: float = 0.4) -> float:
     """
     Lower Confidence Bound scoring for robust ranking.
     
@@ -197,4 +197,6 @@ def compute_lcb_score(fusion_result: Dict, k: float = 0.8) -> float:
     agreement_bonus = fusion_result["agent_agreement"] * 0.1
     lcb += agreement_bonus
     
-    return max(0.0, lcb)
+    # Allow negative values — normalization handles the final range.
+    # Clamping to 0.0 destroys differentiation among mid-tier candidates.
+    return lcb

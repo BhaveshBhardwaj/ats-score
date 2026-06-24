@@ -90,10 +90,13 @@ def rank_and_output_nexus(
         print("[WARN] No candidates to rank!")
         return []
     
-    # Normalize scores to 0-100 range
-    max_score = max(c["lcb_score"] for c in top_candidates)
-    min_score = min(c["lcb_score"] for c in top_candidates)
-    score_range = max(max_score - min_score, 0.001)
+    # Normalize against the FULL evaluated pool, not just top N.
+    # The top 100 out of 15,000 are the elite — their scores should
+    # cluster at the high end of the 0-1 range.
+    all_lcb = [c["lcb_score"] for c in scored_candidates]
+    pool_max = max(all_lcb)
+    pool_min = min(all_lcb)
+    pool_range = max(pool_max - pool_min, 0.001)
     
     # Generate output rows
     rows = []
@@ -103,9 +106,10 @@ def rank_and_output_nexus(
         
         reasoning = generate_nexus_reasoning(fusion, verdicts)
         
-        # Normalize to 0.0-1.0 to match sample_submission.csv format
+        # Normalize against full pool — top 100 will naturally land in the
+        # upper portion of the 0.0-1.0 range since they're the best of 15K
         raw = candidate["lcb_score"]
-        ats_score = max(0.0, min(1.0, (raw - min_score) / score_range))
+        ats_score = max(0.0, min(1.0, (raw - pool_min) / pool_range))
         
         rows.append({
             "candidate_id": candidate["candidate_id"],
