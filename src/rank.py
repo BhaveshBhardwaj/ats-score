@@ -221,7 +221,7 @@ def main():
     
     # ── Stage 0.5: Fast Triage ────────────────────────────────────
     # Reduce candidate pool to manageable size for NEXUS
-    MAX_NEXUS_CANDIDATES = 15000
+    MAX_NEXUS_CANDIDATES = 5000
     
     if len(passed_candidates) > MAX_NEXUS_CANDIDATES:
         print(f"\n[Stage 0.5] Fast triage: {len(passed_candidates):,} → top {MAX_NEXUS_CANDIDATES:,}...")

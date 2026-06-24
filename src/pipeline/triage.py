@@ -201,8 +201,8 @@ def triage_candidates(candidates: list, max_candidates: int = 15000) -> list:
     scored.sort(key=lambda x: -x[0])
     
     # Step 2: Semantic Score boost (Only for top candidates to save time)
-    # We only semantically score up to 2,500 candidates to stay strictly under the 5-min CPU limit
-    SEMANTIC_LIMIT = 2500
+    # We only semantically score up to 500 candidates with condensed summaries to stay strictly under the 5-min CPU limit
+    SEMANTIC_LIMIT = 500
     top_candidates = [c for _, c in scored[:SEMANTIC_LIMIT]]
     remaining_candidates = [c for _, c in scored[SEMANTIC_LIMIT:max_candidates]]
     
@@ -212,9 +212,27 @@ def triage_candidates(candidates: list, max_candidates: int = 15000) -> list:
         summaries = []
         for c in top_candidates:
             title = c.get("profile", {}).get("current_title", "")
-            skills = ", ".join([s.get("name", "") for s in c.get("skills", [])][:10])
-            desc = c.get("career_history", [{}])[0].get("description", "")[:200] if c.get("career_history") else ""
-            summaries.append(f"{title}. Skills: {skills}. Background: {desc}")
+            years = c.get("profile", {}).get("years_of_experience", 0)
+            
+            # Prioritize must-have skills (very short list)
+            all_skills = c.get("skills", [])
+            must_haves = [s.get("name", "") for s in all_skills if s.get("name", "").lower() in MUST_HAVE_SKILLS][:5]
+            other_skills = [s.get("name", "") for s in all_skills if s.get("name", "").lower() not in MUST_HAVE_SKILLS][:5]
+            
+            # Extract job titles and industries of the last 2 roles (no description to save tokens and CPU time)
+            recent_jobs = []
+            for job in c.get("career_history", [])[:2]:
+                j_title = job.get("title", "")
+                j_ind = job.get("industry", "")
+                recent_jobs.append(f"{j_title} ({j_ind})")
+            jobs_str = " | ".join(recent_jobs)
+            
+            summary = (
+                f"Role: {title} ({years}yr). "
+                f"Skills: {', '.join(must_haves)} | {', '.join(other_skills)}. "
+                f"Jobs: {jobs_str}."
+            )
+            summaries.append(summary)
         
         # Batch embed
         embeddings = list(_embed_model.embed(summaries))

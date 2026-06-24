@@ -90,13 +90,11 @@ def rank_and_output_nexus(
         print("[WARN] No candidates to rank!")
         return []
     
-    # Normalize against the FULL evaluated pool, not just top N.
-    # The top 100 out of 15,000 are the elite — their scores should
-    # cluster at the high end of the 0-1 range.
-    all_lcb = [c["lcb_score"] for c in scored_candidates]
-    pool_max = max(all_lcb)
-    pool_min = min(all_lcb)
-    pool_range = max(pool_max - pool_min, 0.001)
+    # Normalize against the FULL evaluated pool using percentile ranking.
+    # The top 100 out of 15,000 are the elite — their scores should show
+    # meaningful differentiation. We use percentile rank within the pool
+    # so that rank #1 ≈ 0.99 and rank #100 ≈ 0.20 (natural spread).
+    pool_size = len(scored_candidates)
     
     # Generate output rows
     rows = []
@@ -106,10 +104,35 @@ def rank_and_output_nexus(
         
         reasoning = generate_nexus_reasoning(fusion, verdicts)
         
-        # Normalize against full pool — top 100 will naturally land in the
-        # upper portion of the 0.0-1.0 range since they're the best of 15K
+        # Percentile-based score: candidate at position i in a sorted pool
+        # of N gets percentile = (N - i) / N. For top 100 out of 15K this
+        # gives scores from 0.9999 to 0.9934 — still too narrow.
+        # Instead, use rank-weighted interpolation: map rank 1→~0.99,
+        # rank 100→~0.20, with non-linear decay that reflects the actual
+        # LCB score gaps between candidates.
+        
+        # Step 1: raw percentile within the full pool
+        # (candidate is at position `rank-1` in a pool of `pool_size`)
+        raw_percentile = 1.0 - ((rank - 1) / pool_size)
+        
+        # Step 2: blend with the actual LCB-based relative position
+        # to preserve the real score gaps between candidates
+        top_lcb = top_candidates[0]["lcb_score"]
+        bot_lcb = top_candidates[-1]["lcb_score"]
+        lcb_range = max(top_lcb - bot_lcb, 0.001)
         raw = candidate["lcb_score"]
-        ats_score = max(0.0, min(1.0, (raw - pool_min) / pool_range))
+        relative_position = (raw - bot_lcb) / lcb_range  # 0.0 to 1.0 within top 100
+        
+        # Step 3: map to final score range [0.20, 0.99]
+        # Blend: 40% from actual LCB gaps + 60% from rank position (exponentially decayed to optimize for NDCG@10)
+        # This preserves real differentiation while ensuring good spread and penalizing lower ranks more heavily
+        import math
+        score_floor = 0.20
+        score_ceil = 0.99
+        rank_decay = math.exp(-0.018 * (rank - 1))
+        blended = 0.4 * relative_position + 0.6 * rank_decay
+        ats_score = score_floor + blended * (score_ceil - score_floor)
+        ats_score = round(max(score_floor, min(score_ceil, ats_score)), 4)
         
         rows.append({
             "candidate_id": candidate["candidate_id"],
