@@ -14,6 +14,7 @@ Key capabilities:
 
 import re
 from collections import Counter
+from typing import Optional
 from flashtext import KeywordProcessor
 
 from agents import (
@@ -228,7 +229,6 @@ class AdvocateAgent(BaseAgent):
             for prefix, lvl in TITLE_PROGRESSION_LEVELS.items():
                 if prefix and prefix in title:
                     level = max(level, lvl)
-                    break
             title_levels.append(level)
         
         # Check for upward trajectory
@@ -253,24 +253,30 @@ class AdvocateAgent(BaseAgent):
                     details="downward career trajectory detected",
                 ))
         
-        # Check for increasing company quality
+        # Check for increasing company quality using ratios to handle odd-length career histories
+        n_first = len(sorted_career) // 2
+        n_second = len(sorted_career) - n_first
+        
         product_count_first_half = sum(
-            1 for j in sorted_career[:len(sorted_career)//2]
+            1 for j in sorted_career[:n_first]
             if any(ind in j.get("industry", "").lower() for ind in TECH_PRODUCT_INDUSTRIES)
         )
         product_count_second_half = sum(
-            1 for j in sorted_career[len(sorted_career)//2:]
+            1 for j in sorted_career[n_first:]
             if any(ind in j.get("industry", "").lower() for ind in TECH_PRODUCT_INDUSTRIES)
         )
         
-        if product_count_second_half > product_count_first_half:
+        ratio_first = product_count_first_half / n_first if n_first > 0 else 0.0
+        ratio_second = product_count_second_half / n_second if n_second > 0 else 0.0
+        
+        if ratio_second > ratio_first and ratio_second >= 0.5:
             evidence.append(self._make_evidence(
                 claim="Moving toward product companies",
                 source="career_history",
                 polarity=EvidencePolarity.POSITIVE,
                 strength=0.5,
                 evidence_type=EvidenceType.INFERRED,
-                details="trend toward product companies in recent roles",
+                details=f"trend toward product companies: {ratio_first:.0%} → {ratio_second:.0%}",
             ))
         
         return evidence
@@ -396,3 +402,44 @@ class AdvocateAgent(BaseAgent):
                 ))
         
         return evidence
+
+    def challenge(self, evidence: Evidence, candidate: dict) -> Optional[Evidence]:
+        """
+        The Advocate challenges negative evidence (Skeptic red flags) 
+        if the candidate possesses strong compensating positive factors.
+        """
+        if evidence.polarity != EvidencePolarity.NEGATIVE:
+            return None  # Only challenge negative evidence
+            
+        claim_lower = evidence.claim.lower()
+        signals = candidate.get("redrob_signals", {})
+        assessments = signals.get("skill_assessment_scores", {})
+        education = candidate.get("education", [])
+        
+        # 1. Counter "consulting career" or "job hopper" flags if they have outstanding academic credentials
+        has_tier1 = any(edu.get("tier") == "tier_1" for edu in education)
+        if ("consulting" in claim_lower or "job hopper" in claim_lower) and has_tier1:
+            return self._make_evidence(
+                claim="Compensating academic pedigree: Tier-1 education",
+                source="education",
+                polarity=EvidencePolarity.POSITIVE,
+                strength=0.5,
+                evidence_type=EvidenceType.FORENSIC,
+                details="challenged: Tier-1 pedigree offsets consulting/hopper risk",
+            )
+            
+        # 2. Counter "unsupported expert claim" or "keyword stuffing" flags if they have high assessment scores
+        has_high_assessment = any(score >= 80 for score in assessments.values())
+        if ("unsupported" in claim_lower or "stuffing" in claim_lower or "mismatch" in claim_lower) and has_high_assessment:
+            top_skill = max(assessments, key=assessments.get)
+            top_score = assessments[top_skill]
+            return self._make_evidence(
+                claim=f"Compensating tested competency: {top_skill} ({top_score}/100)",
+                source="assessment_scores",
+                polarity=EvidencePolarity.POSITIVE,
+                strength=0.6,
+                evidence_type=EvidenceType.FORENSIC,
+                details=f"challenged: high tested skills ({top_skill}: {top_score}/100) corroborate capability",
+            )
+            
+        return None

@@ -165,7 +165,7 @@ def aggregate_evidence(verdicts: List[Verdict]) -> List[Evidence]:
     for verdict in verdicts:
         for evidence in verdict.evidence:
             # Simple dedup by claim text
-            claim_key = evidence.claim.lower()[:50]
+            claim_key = evidence.claim.lower()
             if claim_key not in seen_claims:
                 all_evidence.append(evidence)
                 seen_claims.add(claim_key)

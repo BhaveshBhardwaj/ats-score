@@ -31,7 +31,7 @@ from config import (
 # ── Initialize FlashText Processors ──────────────────────────────
 _all_relevant_processor = KeywordProcessor(case_sensitive=False)
 for kw in (MUST_HAVE_SKILLS | CORE_AI_ML_SKILLS | NLP_IR_SKILLS | LLM_FINETUNING_SKILLS):
-    _all_relevant_processor.add_keyword(kw, "RELEVANT")
+    _all_relevant_processor.add_keyword(kw, kw)
 
 _ml_processor = KeywordProcessor(case_sensitive=False)
 for kw in ML_WORK_KEYWORDS:
