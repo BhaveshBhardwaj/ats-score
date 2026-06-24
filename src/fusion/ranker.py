@@ -103,14 +103,14 @@ def rank_and_output_nexus(
         
         reasoning = generate_nexus_reasoning(fusion, verdicts)
         
-        # Normalize to 0-100
+        # Normalize to 0.0-1.0 to match sample_submission.csv format
         raw = candidate["lcb_score"]
-        ats_score = max(0.0, min(100.0, ((raw - min_score) / score_range) * 90.0 + 10.0))
+        ats_score = max(0.0, min(1.0, (raw - min_score) / score_range))
         
         rows.append({
             "candidate_id": candidate["candidate_id"],
             "rank": rank,
-            "score": f"{ats_score:.2f}",
+            "score": f"{ats_score:.4f}",
             "reasoning": reasoning,
         })
     
