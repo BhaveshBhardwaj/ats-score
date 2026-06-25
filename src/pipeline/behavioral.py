@@ -304,12 +304,11 @@ def score_location(candidate: dict) -> dict:
     
     score = 0.0
     details_parts = []
-    
-    # Country check
-    if country == PREFERRED_COUNTRY or "india" in country:
+
+    in_preferred_country = (country == PREFERRED_COUNTRY or "india" in country or "india" in location)
+
+    if in_preferred_country:
         score += 0.4
-        
-        # City check
         is_preferred = any(loc in location for loc in PREFERRED_LOCATIONS)
         is_acceptable = any(loc in location for loc in ACCEPTABLE_LOCATIONS)
         

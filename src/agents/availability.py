@@ -286,7 +286,9 @@ class AvailabilityAgent(BaseAgent):
         country = profile.get("country", "").lower().strip()
         willing_to_relocate = signals.get("willing_to_relocate", False)
         
-        if country == PREFERRED_COUNTRY or "india" in country:
+        in_preferred_country = (country == PREFERRED_COUNTRY or "india" in country or "india" in location)
+        
+        if in_preferred_country:
             is_preferred = any(loc in location for loc in PREFERRED_LOCATIONS)
             is_acceptable = any(loc in location for loc in ACCEPTABLE_LOCATIONS)
             

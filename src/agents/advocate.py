@@ -304,8 +304,8 @@ class AdvocateAgent(BaseAgent):
             if any(ms in name or name in ms for ms in MUST_HAVE_SKILLS | CORE_AI_ML_SKILLS | NLP_IR_SKILLS):
                 relevant_skill_count += 1
         
-        # Hidden gem: strong career evidence but few listed skills
-        if ml_keyword_hits >= 5 and relevant_skill_count <= 3:
+        # Hidden gem: strong career evidence but few listed skills (and actual description content)
+        if ml_keyword_hits >= 5 and relevant_skill_count <= 3 and len(all_desc) > 200:
             evidence.append(self._make_evidence(
                 claim="Hidden gem: strong career evidence despite few listed skills",
                 source="career_description",
@@ -347,6 +347,10 @@ class AdvocateAgent(BaseAgent):
             desc = job.get("description", "").lower()
             title = job.get("title", "").lower()
             company = job.get("company", "")
+            
+            # Skip jobs with suspiciously short descriptions (prevents keyword stuffing)
+            if len(desc) < 100:
+                continue
             
             for domain, keywords in transfer_domains.items():
                 hits = sum(1 for kw in keywords if kw in desc or kw in title)

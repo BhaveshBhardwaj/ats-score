@@ -1,0 +1,54 @@
+team_name: "Binary Bascilia"
+
+primary_contact:
+  name: "Bhavesh Bhardwaj"
+  email: "bhardwaj@example.com"
+  phone: "+91-8851387078"
+
+team_members:
+  - name: "Bhavesh Bhardwaj"
+    email: "bhardwaj@example.com"
+    role: "ML Engineer"
+
+github_repo: "https://github.com/BhaveshBhardwaj/ats-score"
+
+sandbox_link: "TODO: Add your Streamlit Cloud link here"
+
+reproduce_command: "python src/rank.py --candidates data/candidates.jsonl --out outputs/submission.csv"
+
+compute:
+  platform: "Windows"
+  cpu_cores: 8
+  ram_gb: 16
+  python_version: "3.10"
+  os: "Windows 11"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: false
+  pre_computation_time_minutes: 0
+
+ai_tools_used:
+  - "Gemini"
+
+ai_usage_summary: |
+  Used Gemini as an agentic AI assistant to analyze the job description, 
+  design the multi-agent NEXUS pipeline, write the code, and optimize the 
+  ranking logic based on the hackathon scoring formula. No candidate data 
+  was fed to the LLM during runtime (all inference is local).
+
+methodology_summary: |
+  NEXUS is a multi-agent system. Stage 1: FlashText and FastEmbed pre-filter candidates.
+  Stage 2: 5 specialized agents (Advocate, Skeptic, Forensic, Trajectory, Availability) 
+  evaluate candidates using localized rules derived directly from the JD. 
+  Stage 3: Agents undergo adversarial debate to resolve conflicting evidence.
+  Stage 4: Bayesian belief fusion computes an LCB (Lower Confidence Bound) score, 
+  which is modified by a behavioral availability multiplier. 
+  Finally, scores are normalized via percentile-based mapping to ensure proper 
+  differentiation in the top 100.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true
