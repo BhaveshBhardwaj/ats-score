@@ -258,6 +258,29 @@ def display_results(results, top_n=100):
     
     st.markdown("---")
     
+    # Generate rows
+    rows = []
+    for rank, s in enumerate(scored, 1):
+        fusion = s["fusion_result"]
+        reasoning = generate_nexus_reasoning(fusion, s.get("verdicts", []))
+        candidate = s.get("_candidate", {})
+        profile = candidate.get("profile", {})
+        
+        ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
+        
+        rows.append({
+            "Rank": rank,
+            "ID": s["candidate_id"],
+            "LCB Score": round(s["lcb_score"], 4),
+            "Posterior": round(fusion["posterior"], 4),
+            "Uncertainty": round(fusion["uncertainty"], 4),
+            "Agreement": round(fusion["agent_agreement"], 4),
+            "Title": profile.get("current_title", "?"),
+            "Company": profile.get("current_company", "?"),
+            "Exp": f"{profile.get('years_of_experience', 0)} yrs",
+            "Reasoning": reasoning,
+        })
+    
     # Use tabs for a cleaner layout
     tab1, tab2, tab3 = st.tabs(["🏆 Leaderboard", "🔍 Detailed Analysis", "📊 Analytics"])
     
