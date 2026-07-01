@@ -2,12 +2,12 @@ team_name: "Binary Bascilia"
 
 primary_contact:
   name: "Bhavesh Bhardwaj"
-  email: "bhardwaj@example.com"
+  email: "bhardwajbhavesh7@gmail.com"
   phone: "+91-8851387078"
 
 team_members:
   - name: "Bhavesh Bhardwaj"
-    email: "bhardwaj@example.com"
+    email: "bhardwajbhavesh7@gmail.com"
     role: "ML Engineer"
 
 github_repo: "https://github.com/BhaveshBhardwaj/ats-score"
