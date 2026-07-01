@@ -14,10 +14,11 @@ pip install -r requirements.txt
 python src/setup_models.py
 
 # Run NEXUS ranker (Takes < 3.5 minutes on CPU)
+# Produces both submission.csv and submission.xlsx
 python src/rank.py --candidates data/candidates.jsonl --out outputs/submission.csv
 ```
 
-**One command.** Produces `submission.csv` with the top 100 ranked candidates, scored and reasoned by 5 adversarial agents.
+**One command.** Produces `submission.csv` + `submission.xlsx` with the top 100 ranked candidates, scored and reasoned by 5 adversarial agents.
 
 ## Architecture
 
@@ -199,9 +200,7 @@ To evaluate 100,000 candidates in under 5 minutes without losing semantic precis
 │       ├── honeypot.py         # Honeypot detection
 │       ├── skills.py           # Skill taxonomy (used by agents)
 │       ├── career.py           # Career analysis (used by agents)
-│       ├── behavioral.py       # Behavioral scoring (used by agents)
-│       ├── scorer.py           # Legacy composite scorer
-│       └── ranker.py           # Legacy ranker
+│       └── behavioral.py       # Behavioral scoring (used by agents)
 ├── data/
 │   ├── candidates.jsonl        # 100K candidate pool
 │   └── sample_candidates.json

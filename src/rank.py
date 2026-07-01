@@ -98,13 +98,13 @@ def run_nexus_pipeline(candidate, agents):
     
     # Tiered notice period (JD: "sub-30 day notice preferred, 30+ bar gets higher")
     if notice_days <= 30:
-        lcb += 0.03
+        lcb *= 1.04
     elif notice_days <= 60:
         pass  # neutral
     elif notice_days <= 90:
-        lcb -= 0.01
+        lcb *= 0.98
     else:
-        lcb -= 0.04  # 90+ days is a significant friction
+        lcb *= 0.94  # 90+ days is a significant friction
     
     return {
         "candidate_id": candidate.get("candidate_id", ""),

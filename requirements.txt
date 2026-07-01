@@ -5,6 +5,10 @@
 flashtext>=2.7
 fastembed>=0.4.0
 onnxruntime>=1.16.0
+numpy>=1.24.0
+
+# XLSX output for portal submission
+openpyxl>=3.1.0
 
 # Optional: for Streamlit demo app
 streamlit>=1.28.0

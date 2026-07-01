@@ -134,18 +134,13 @@ def prefilter(candidate: dict) -> tuple[bool, str]:
         neg_skills = _count_negative_domain_skills(candidate)
         total_skills = len(candidate.get("skills", []))
         
-        if is_irrelevant_title and (total_skills == 0 or neg_skills / max(total_skills, 1) > 0.5):
-            return False, f"No tech relevance: title='{profile.get('current_title')}', {neg_skills}/{total_skills} negative skills"
-        
-        # Even without explicit tech skills, some candidates might be
-        # valuable. Only filter if they have a purely irrelevant title
-        # and zero tech signals
-        if is_irrelevant_title and total_skills > 0:
-            # Let them through — the scorer will give them a low score
-            pass
-        elif not is_irrelevant_title:
-            pass
-        else:
+        if is_irrelevant_title:
+            # Irrelevant title AND no tech relevance — only keep if they
+            # have substantial non-negative skills (potential career pivoters)
+            non_neg_skills = total_skills - neg_skills
+            if total_skills == 0 or non_neg_skills < 3:
+                return False, f"No tech relevance: title='{profile.get('current_title')}', {neg_skills}/{total_skills} negative skills"
+        elif total_skills == 0:
             return False, f"No tech relevance and no skills: title='{profile.get('current_title')}'"
     
     return True, "Passed pre-filter"

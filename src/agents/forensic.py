@@ -131,12 +131,17 @@ class ForensicAgent(BaseAgent):
             sources = 1  # Self-reported is always 1
             
             # Check career description corroboration
+            # Require ≥5 chars to avoid false positives (e.g. "deep" matching
+            # unrelated contexts when skill is "deep learning")
             career_match = False
             name_parts = name.split()
             for part in name_parts:
-                if len(part) > 2 and part in all_text:
+                if len(part) >= 5 and part in all_text:
                     career_match = True
                     break
+            # Also check the full skill name for shorter multi-word skills
+            if not career_match and len(name) >= 5 and name in all_text:
+                career_match = True
             if career_match:
                 sources += 1
             

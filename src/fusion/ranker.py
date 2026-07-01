@@ -2,10 +2,11 @@
 NEXUS Final Ranker
 
 Information-theoretic ranking with debate-derived reasoning.
-Produces the final top-100 CSV submission.
+Produces the final top-100 CSV + XLSX submission.
 """
 
 import csv
+import math
 from pathlib import Path
 from typing import List, Dict
 
@@ -13,7 +14,7 @@ from agents import EvidencePolarity
 from fusion.bayesian import compute_lcb_score
 
 
-def generate_nexus_reasoning(fusion_result: Dict, verdicts: list) -> str:
+def generate_nexus_reasoning(fusion_result: Dict, verdicts: list, candidate: dict = None) -> str:
     """
     Generate reasoning from the multi-agent debate transcript.
     
@@ -21,6 +22,17 @@ def generate_nexus_reasoning(fusion_result: Dict, verdicts: list) -> str:
     evidence-backed explanations that reference actual profile details.
     """
     parts = []
+    
+    # Lead with candidate-specific context when available
+    if candidate:
+        profile = candidate.get("profile", {})
+        title = profile.get("current_title", "")
+        company = profile.get("current_company", "")
+        years = profile.get("years_of_experience", 0)
+        if title and company:
+            parts.append(f"{title} at {company} ({years}yr)")
+        elif title:
+            parts.append(f"{title} ({years}yr)")
     
     # Lead with the strongest positive evidence
     top_positive = fusion_result.get("top_positive_evidence", [])
@@ -51,8 +63,8 @@ def generate_nexus_reasoning(fusion_result: Dict, verdicts: list) -> str:
     reasoning = "; ".join(parts)
     
     # Trim for CSV cleanliness
-    if len(reasoning) > 200:
-        reasoning = reasoning[:197] + "..."
+    if len(reasoning) > 250:
+        reasoning = reasoning[:247] + "..."
     
     return reasoning if reasoning else "Insufficient evidence for detailed reasoning"
 
@@ -90,52 +102,39 @@ def rank_and_output_nexus(
         print("[WARN] No candidates to rank!")
         return []
     
-    # Normalize against the FULL evaluated pool using percentile ranking.
-    # The top 100 out of 15,000 are the elite — their scores should show
-    # meaningful differentiation. We use percentile rank within the pool
-    # so that rank #1 ≈ 0.99 and rank #100 ≈ 0.20 (natural spread).
-    pool_size = len(scored_candidates)
-    
     # Generate output rows
     rows = []
-    for rank, candidate in enumerate(top_candidates, start=1):
-        fusion = candidate["fusion_result"]
-        verdicts = candidate.get("verdicts", [])
+    for rank, candidate_data in enumerate(top_candidates, start=1):
+        fusion = candidate_data["fusion_result"]
+        verdicts = candidate_data.get("verdicts", [])
+        raw_candidate = candidate_data.get("_candidate")  # may be present from app.py
         
-        reasoning = generate_nexus_reasoning(fusion, verdicts)
+        reasoning = generate_nexus_reasoning(fusion, verdicts, raw_candidate)
         
-        # Percentile-based score: candidate at position i in a sorted pool
-        # of N gets percentile = (N - i) / N. For top 100 out of 15K this
-        # gives scores from 0.9999 to 0.9934 — still too narrow.
-        # Instead, use rank-weighted interpolation: map rank 1→~0.99,
-        # rank 100→~0.20, with non-linear decay that reflects the actual
-        # LCB score gaps between candidates.
+        # Score normalization optimized for NDCG@10 (50% of hackathon score).
+        # Use rank-weighted interpolation: map rank 1→~0.99, rank 100→~0.20.
+        # Steeper exponential decay in top-10 creates maximum differentiation
+        # where NDCG rewards it most.
         
-        # Step 1: raw percentile within the full pool
-        # (candidate is at position `rank-1` in a pool of `pool_size`)
-        raw_percentile = 1.0 - ((rank - 1) / pool_size)
-        
-        # Step 2: blend with the actual LCB-based relative position
-        # to preserve the real score gaps between candidates
+        # Step 1: LCB-based relative position within top 100
         top_lcb = top_candidates[0]["lcb_score"]
         bot_lcb = top_candidates[-1]["lcb_score"]
         lcb_range = max(top_lcb - bot_lcb, 0.001)
-        raw = candidate["lcb_score"]
+        raw = candidate_data["lcb_score"]
         relative_position = (raw - bot_lcb) / lcb_range  # 0.0 to 1.0 within top 100
         
-        # Step 3: map to final score range [0.20, 0.99]
-        # Blend: 40% from actual LCB gaps + 60% from rank position (exponentially decayed to optimize for NDCG@10)
-        # This preserves real differentiation while ensuring good spread and penalizing lower ranks more heavily
-        import math
+        # Step 2: map to final score range [0.20, 0.99]
+        # Blend: 40% from actual LCB gaps + 60% from rank position
+        # Steeper decay (0.035) maximizes NDCG@10 differentiation
         score_floor = 0.20
         score_ceil = 0.99
-        rank_decay = math.exp(-0.018 * (rank - 1))
+        rank_decay = math.exp(-0.035 * (rank - 1))
         blended = 0.4 * relative_position + 0.6 * rank_decay
         ats_score = score_floor + blended * (score_ceil - score_floor)
         ats_score = round(max(score_floor, min(score_ceil, ats_score)), 4)
         
         rows.append({
-            "candidate_id": candidate["candidate_id"],
+            "candidate_id": candidate_data["candidate_id"],
             "rank": rank,
             "score": f"{ats_score:.4f}",
             "reasoning": reasoning,
@@ -154,6 +153,26 @@ def rank_and_output_nexus(
         writer.writerows(rows)
     
     print(f"\n[OK] NEXUS wrote {len(rows)} ranked candidates to {output_path}")
+    
+    # Write XLSX for portal submission
+    xlsx_path = path.with_suffix(".xlsx")
+    try:
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Submission"
+        ws.append(["candidate_id", "rank", "score", "reasoning"])
+        for row in rows:
+            ws.append([
+                row["candidate_id"],
+                int(row["rank"]),
+                float(row["score"]),
+                row["reasoning"],
+            ])
+        wb.save(xlsx_path)
+        print(f"[OK] NEXUS wrote XLSX submission to {xlsx_path}")
+    except ImportError:
+        print("[WARN] openpyxl not installed — XLSX not generated. Run: pip install openpyxl")
     
     # Print top 10 summary
     print(f"\n{'='*80}")
