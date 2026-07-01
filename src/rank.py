@@ -112,6 +112,7 @@ def run_nexus_pipeline(candidate, agents):
         "fusion_result": fusion_result,
         "lcb_score": lcb,
         "disagreement": disagreement,
+        "_candidate": candidate,
     }
 
 
