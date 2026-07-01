@@ -44,37 +44,103 @@ st.set_page_config(
 # ---- Custom CSS ----
 st.markdown("""
 <style>
+    /* Global Theme Overrides */
+    .stApp {
+        background-color: #0e1117;
+        color: #e2e8f0;
+    }
     .main-header {
-        font-size: 2.5rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-size: 3rem;
+        font-weight: 900;
+        background: linear-gradient(135deg, #00C9FF 0%, #92FE9D 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0;
+        animation: fadeInDown 0.8s ease-out;
     }
     .sub-header {
-        font-size: 1.1rem;
-        color: #666;
-        margin-top: -10px;
-        margin-bottom: 30px;
+        font-size: 1.2rem;
+        color: #94a3b8;
+        margin-top: -5px;
+        margin-bottom: 40px;
+        animation: fadeIn 1s ease-out 0.3s both;
     }
+    
+    /* Metrics Styling */
+    [data-testid="stMetricValue"] {
+        font-size: 2.2rem !important;
+        font-weight: 800 !important;
+        color: #f8fafc !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 1rem !important;
+        color: #94a3b8 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    /* Agent Cards (Glassmorphism + Hover) */
     .agent-card {
-        border-radius: 12px;
-        padding: 15px;
-        margin: 5px 0;
+        border-radius: 16px;
+        padding: 20px;
+        margin: 10px 0;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .agent-advocate { background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); color: #1a3a1a; }
-    .agent-skeptic { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); color: #3a1a1a; }
-    .agent-forensic { background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); color: #1a1a3a; }
-    .agent-trajectory { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #3a2a1a; }
-    .agent-availability { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); color: #2a1a3a; }
-    .score-high { color: #10b981; font-weight: bold; }
-    .score-mid { color: #f59e0b; font-weight: bold; }
-    .score-low { color: #ef4444; font-weight: bold; }
-    .evidence-positive { color: #10b981; }
-    .evidence-negative { color: #ef4444; }
-    .evidence-challenged { text-decoration: line-through; opacity: 0.6; }
-    .stDataFrame { border-radius: 12px; overflow: hidden; }
+    .agent-card:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Specific Agent Colors (Gradients) */
+    .agent-advocate { border-left: 4px solid #34d399; }
+    .agent-skeptic { border-left: 4px solid #f87171; }
+    .agent-forensic { border-left: 4px solid #60a5fa; }
+    .agent-trajectory { border-left: 4px solid #fbbf24; }
+    .agent-availability { border-left: 4px solid #c084fc; }
+    
+    /* Agent Headers */
+    .agent-header {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    /* Evidence Badges */
+    .badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-right: 6px;
+        margin-bottom: 6px;
+    }
+    .badge-pos { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+    .badge-neg { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+    
+    /* Dataframe overrides */
+    .stDataFrame {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Animations */
+    @keyframes fadeInDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -143,15 +209,27 @@ def run_nexus_pipeline(candidates_data, agents):
     return results
 
 
-def display_agent_verdict(verdict, agent_name, color_class):
+def display_agent_verdict(verdict, agent_name, color_class, icon):
     """Display a single agent's verdict."""
     score_pct = f"{verdict.score:.0%}"
     conf_pct = f"{verdict.confidence:.0%}"
     
     st.markdown(f"""
     <div class="agent-card {color_class}">
-        <strong>{agent_name}</strong>: {score_pct} (conf: {conf_pct})<br>
-        <small>{verdict.reasoning[:120]}</small>
+        <div class="agent-header">
+            {icon} {agent_name}
+        </div>
+        <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+            <div style="background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em;">
+                Score: <strong>{score_pct}</strong>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em;">
+                Confidence: <strong>{conf_pct}</strong>
+            </div>
+        </div>
+        <div style="font-size: 0.95em; color: #cbd5e1; line-height: 1.5;">
+            {verdict.reasoning[:150]}{"..." if len(verdict.reasoning) > 150 else ""}
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -180,123 +258,116 @@ def display_results(results, top_n=100):
     
     st.markdown("---")
     
-    # Results table
-    rows = []
-    for rank, s in enumerate(scored, 1):
-        fusion = s["fusion_result"]
-        reasoning = generate_nexus_reasoning(fusion, s.get("verdicts", []))
-        candidate = s.get("_candidate", {})
-        profile = candidate.get("profile", {})
+    # Use tabs for a cleaner layout
+    tab1, tab2, tab3 = st.tabs(["🏆 Leaderboard", "🔍 Detailed Analysis", "📊 Analytics"])
+    
+    with tab1:
+        st.markdown("### Top Ranked Candidates")
+        st.dataframe(
+            rows,
+            use_container_width=True,
+            height=600,
+            column_config={
+                "Rank": st.column_config.NumberColumn("Rank", width="small"),
+                "LCB Score": st.column_config.ProgressColumn("LCB", min_value=0, max_value=1, format="%.4f"),
+                "Posterior": st.column_config.ProgressColumn("Posterior", min_value=0, max_value=1, format="%.4f"),
+                "Uncertainty": st.column_config.ProgressColumn("Uncert", min_value=0, max_value=1, format="%.4f"),
+                "Agreement": st.column_config.ProgressColumn("Agree", min_value=0, max_value=1, format="%.4f"),
+            },
+        )
         
-        ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
+        # CSV download
+        csv_buffer = io.StringIO()
+        writer = csv.DictWriter(csv_buffer, fieldnames=["candidate_id", "rank", "score", "reasoning"])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({
+                "candidate_id": row["ID"],
+                "rank": row["Rank"],
+                "score": f"{row['LCB Score']:.4f}",
+                "reasoning": row["Reasoning"],
+            })
         
-        rows.append({
-            "Rank": rank,
-            "ID": s["candidate_id"],
-            "LCB Score": round(s["lcb_score"], 4),
-            "Posterior": round(fusion["posterior"], 4),
-            "Uncertainty": round(fusion["uncertainty"], 4),
-            "Agreement": round(fusion["agent_agreement"], 4),
-            "Title": profile.get("current_title", "?"),
-            "Company": profile.get("current_company", "?"),
-            "Exp": f"{profile.get('years_of_experience', 0)} yrs",
-            "Reasoning": reasoning,
-        })
+        st.download_button(
+            label="📥 Download submission.csv",
+            data=csv_buffer.getvalue(),
+            file_name="submission.csv",
+            mime="text/csv",
+            type="primary"
+        )
     
-    st.dataframe(
-        rows,
-        use_container_width=True,
-        height=500,
-        column_config={
-            "Rank": st.column_config.NumberColumn("Rank", width="small"),
-            "LCB Score": st.column_config.ProgressColumn("LCB", min_value=0, max_value=1, format="%.4f"),
-            "Posterior": st.column_config.ProgressColumn("Posterior", min_value=0, max_value=1, format="%.4f"),
-            "Uncertainty": st.column_config.ProgressColumn("Uncert", min_value=0, max_value=1, format="%.4f"),
-            "Agreement": st.column_config.ProgressColumn("Agree", min_value=0, max_value=1, format="%.4f"),
-        },
-    )
-    
-    # CSV download
-    csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=["candidate_id", "rank", "score", "reasoning"])
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({
-            "candidate_id": row["ID"],
-            "rank": row["Rank"],
-            "score": f"{row['LCB Score']:.4f}",
-            "reasoning": row["Reasoning"],
-        })
-    
-    st.download_button(
-        label="📥 Download submission.csv",
-        data=csv_buffer.getvalue(),
-        file_name="submission.csv",
-        mime="text/csv",
-    )
-    
-    # ── Detailed Agent Analysis for Top Candidates ────────────────
-    st.markdown("---")
-    st.subheader("🔍 Multi-Agent Analysis (Top 10)")
-    
-    agent_names = {
-        "advocate": ("🟢 Advocate", "agent-advocate"),
-        "skeptic": ("🔴 Skeptic", "agent-skeptic"),
-        "forensic": ("🔵 Forensic", "agent-forensic"),
-        "trajectory": ("🟠 Trajectory", "agent-trajectory"),
-        "availability": ("🟣 Availability", "agent-availability"),
-    }
-    
-    for s in scored[:10]:
-        candidate = s.get("_candidate", {})
-        profile = candidate.get("profile", {})
-        fusion = s["fusion_result"]
+    with tab2:
+        st.markdown("### Multi-Agent Debate Transcripts (Top 10)")
         
-        ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
+        agent_configs = {
+            "advocate": ("Advocate", "agent-advocate", "🟢"),
+            "skeptic": ("Skeptic", "agent-skeptic", "🔴"),
+            "forensic": ("Forensic", "agent-forensic", "🔵"),
+            "trajectory": ("Trajectory", "agent-trajectory", "🟠"),
+            "availability": ("Availability", "agent-availability", "🟣"),
+        }
         
-        with st.expander(
-            f"#{scored.index(s)+1} | {s['candidate_id']} | "
-            f"{profile.get('current_title', '?')} @ {profile.get('current_company', '?')} | "
-            f"LCB: {s['lcb_score']:.4f}"
-        ):
-            # Agent verdicts
-            st.markdown("**Agent Verdicts:**")
-            cols = st.columns(5)
-            for i, verdict in enumerate(s.get("verdicts", [])):
-                name, css_class = agent_names.get(verdict.agent_id, ("Agent", ""))
-                with cols[i % 5]:
-                    display_agent_verdict(verdict, name, css_class)
+        for s in scored[:10]:
+            candidate = s.get("_candidate", {})
+            profile = candidate.get("profile", {})
+            fusion = s["fusion_result"]
             
-            # Fusion details
-            st.markdown("**Fusion Results:**")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Posterior", f"{fusion['posterior']:.4f}")
-            with col2:
-                st.metric("Uncertainty", f"{fusion['uncertainty']:.4f}")
-            with col3:
-                st.metric("CI", f"[{ci_low:.2f}, {ci_high:.2f}]")
-            with col4:
-                st.metric("Agreement", f"{fusion['agent_agreement']:.2f}")
+            ci_low, ci_high = fusion.get("confidence_interval", (0, 1))
             
-            # Evidence summary
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**✅ Top Positive Evidence:**")
-                for ev in fusion.get("top_positive_evidence", []):
-                    survived = " ✓" if ev.challenge_survived else ""
-                    st.markdown(f"- {ev.details}{survived}")
-            
-            with col2:
-                st.markdown("**❌ Top Negative Evidence:**")
-                for ev in fusion.get("top_negative_evidence", []):
-                    survived = " ✓" if ev.challenge_survived else ""
-                    st.markdown(f"- {ev.details}{survived}")
-            
-            # Disagreement profile
-            disagree = s.get("disagreement", {})
-            if disagree.get("needs_debate"):
-                st.info(f"⚡ Debate triggered (spread: {disagree.get('spread', 0):.2f})")
+            with st.expander(
+                f"#{scored.index(s)+1} | {s['candidate_id']} | "
+                f"{profile.get('current_title', '?')} @ {profile.get('current_company', '?')} | "
+                f"Score: {s['lcb_score']:.4f}"
+            ):
+                # Fusion metrics row
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Bayesian Posterior", f"{fusion['posterior']:.4f}")
+                with col2:
+                    st.metric("Uncertainty", f"{fusion['uncertainty']:.4f}")
+                with col3:
+                    st.metric("95% CI", f"[{ci_low:.2f}, {ci_high:.2f}]")
+                with col4:
+                    st.metric("Agent Agreement", f"{fusion['agent_agreement']:.2f}")
+                
+                st.markdown("<hr style='margin: 10px 0; opacity: 0.2;'>", unsafe_allow_html=True)
+                
+                # Evidence row
+                ev_col1, ev_col2 = st.columns(2)
+                with ev_col1:
+                    st.markdown("##### ✅ Positive Evidence")
+                    for ev in fusion.get("top_positive_evidence", []):
+                        survived = " (Debate Validated)" if ev.challenge_survived else ""
+                        st.markdown(f"<span class='badge badge-pos'>+{ev.effective_weight:.2f}</span> {ev.details}{survived}", unsafe_allow_html=True)
+                
+                with ev_col2:
+                    st.markdown("##### ❌ Negative Evidence")
+                    for ev in fusion.get("top_negative_evidence", []):
+                        survived = " (Debate Validated)" if ev.challenge_survived else ""
+                        st.markdown(f"<span class='badge badge-neg'>{ev.effective_weight:.2f}</span> {ev.details}{survived}", unsafe_allow_html=True)
+                
+                st.markdown("<hr style='margin: 15px 0; opacity: 0.2;'>", unsafe_allow_html=True)
+                
+                # Disagreement/Debate alert
+                disagree = s.get("disagreement", {})
+                if disagree.get("needs_debate"):
+                    st.warning(f"⚡ **Debate Triggered**: Score spread was {disagree.get('spread', 0):.2f}. Agents cross-examined each other's evidence.")
+                
+                # Agent verdicts
+                st.markdown("##### Agent Verdicts")
+                cols = st.columns(5)
+                for i, verdict in enumerate(s.get("verdicts", [])):
+                    name, css_class, icon = agent_configs.get(verdict.agent_id, ("Agent", "", "🤖"))
+                    with cols[i % 5]:
+                        display_agent_verdict(verdict, name, css_class, icon)
+                        
+    with tab3:
+        st.markdown("### Score Distribution & Pipeline Funnel")
+        st.info("Visualizations can be built here using st.bar_chart or plotly depending on user preference.")
+        # We can just show a basic bar chart of scores
+        scores = [row["LCB Score"] for row in rows]
+        if scores:
+            st.bar_chart(scores)
 
 
 # ---- Main App ----
