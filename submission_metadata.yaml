@@ -6,9 +6,18 @@ primary_contact:
   phone: "+91-8851387078"
 
 team_members:
+  - name: "Riya Mehdiratta"
+    email: "riyamehdiratta@gmail.com"
+    role: "Team Leader"
   - name: "Bhavesh Bhardwaj"
     email: "bhardwajbhavesh7@gmail.com"
     role: "ML Engineer"
+  - name: "Arpan Goyal"
+    email: "arpang754@gmail.com"
+    role: "Team Member"
+  - name: "Anumaan Whig"
+    email: "anumaancs@gmail.com"
+    role: "Team Member"
 
 github_repo: "https://github.com/BhaveshBhardwaj/ats-score"
 
